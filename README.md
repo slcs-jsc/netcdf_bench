@@ -78,4 +78,4 @@ This project includes several bash scripts and a Python script to facilitate run
 These scripts are designed to streamline the benchmarking process and provide insights into the I/O performance of NetCDF domain decomposition.
 
 ## License
-This project is licensed under the MIT License.
+This project is licensed under the GPL-3.0 License.
