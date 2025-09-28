@@ -138,18 +138,38 @@ int main(int argc, char **argv) {
     }
 
     // Calculate subdomain boundaries for each process
-    int lat_size = dimlen[lat_idx], lon_size = dimlen[lon_idx];
-    int sub_lat = lat_size / nproc_y;
+    int lon_size = dimlen[lon_idx], lat_size = dimlen[lat_idx];
     int sub_lon = lon_size / nproc_x;
+    int sub_lat = lat_size / nproc_y;
+    int base_lon0 = px * sub_lon - halo;
     int base_lat0 = py * sub_lat;
-    int base_lon0 = px * sub_lon;
-    int base_lat1 = base_lat0 + sub_lat - 1;
-    int base_lon1 = base_lon0 + sub_lon - 1;
+    int base_lon1 = px * sub_lon + sub_lon - 1 + halo;
+    int base_lat1 = py * sub_lat + sub_lat - 1;
+
+    // check for periodic boundaries
+    bool has_periodic_halo = (halo > 0) && ( (px == 0) || (px == nproc_x - 1) );
+    int periodic_halo_lon_start = 0;
+    if (px == 0) {
+        base_lon0 += halo;
+        periodic_halo_lon_start = lon_size - halo - 1;
+    }else if (px == nproc_x - 1) {
+        base_lon1 -= halo;
+        periodic_halo_lon_start = 0;
+    }
+
+    // Allocate buffer for reading data including halos
+    size_t bufsize = (sub_lat + 2*halo) * (sub_lon + 2*halo);
+    for (int d = 0; d < ndims; d++) {
+        if (d != lat_idx && d != lon_idx) {
+            bufsize *= dimlen[d];
+        }
+    }
+    float *buffer = (float*) malloc(bufsize * sizeof(float));
 
     if (rank == 0) {
         printf("Processing %d files with %d ranks (%dx%d decomposition, halo=%d)\n", nfiles, nprocs, nproc_x, nproc_y, halo);
     }
-    printf("Rank %d: subdomain lat[%d:%d], lon[%d:%d]\n", rank, base_lat0, base_lat1, base_lon0, base_lon1);
+    printf("Rank %d: subdomain lat[%d:%d], lon[%d:%d]%s\n", rank, base_lat0, base_lat1, base_lon0, base_lon1, lon_boundary==0?"":(lon_boundary==-1?" (periodic left halo)":" (periodic right halo)"));
 
     // Calculate the size of the file in bytes for timing output
     size_t file_bytes = sizeof(float) * nvars;
@@ -160,6 +180,10 @@ int main(int argc, char **argv) {
     double *file_times = (double*) malloc(nfiles * sizeof(double));
     size_t *start = (size_t*) malloc(ndims * sizeof(size_t));
     size_t *count = (size_t*) malloc(ndims * sizeof(size_t));
+    for (int d = 0; d < ndims; d++) {
+        start[d] = 0;
+        count[d] = dimlen[d];
+    }
 
     for (int f = 0; f < nfiles; f++) {
         retval = nc_open_par(file_list[f], NC_NOWRITE, MPI_COMM_WORLD, MPI_INFO_NULL, &ncid);
@@ -182,89 +206,26 @@ int main(int argc, char **argv) {
         double file_start = get_time_sec();
         for (int varid = 0; varid < nvars+dimvars; varid++) {
             if (is_dimvar[varid]) continue;
-            for (int d = 0; d < ndims; d++) {
-                start[d] = 0;
-                count[d] = dimlen[d];
-            }
             start[lat_idx] = base_lat0;
             start[lon_idx] = base_lon0;
-            count[lat_idx] = sub_lat;
-            count[lon_idx] = sub_lon;
-            size_t base_size = 1;
-            for (int d = 0; d < ndims; d++) {
-                base_size *= count[d];
+            count[lat_idx] = base_lat1-base_lat0+1;
+            count[lon_idx] = base_lon1-base_lon0+1;
+            retval = nc_get_vara_float(ncid, varid, start, count, buffer);
+            if (retval != NC_NOERR) {
+                printf("Rank %d: Error reading subdomain for var %d: %s\n", rank, varid, nc_strerror(retval));
+                safe_abort(MPI_COMM_WORLD, 1);
             }
-            float *base_buffer = (float*) malloc(base_size * sizeof(float));
-            retval = nc_get_vara_float(ncid, varid, start, count, base_buffer);
-            if (retval != NC_NOERR) { 
-                printf("Rank %d: Error reading base subdomain for var %d: %s\n", rank, varid, nc_strerror(retval)); 
-                safe_abort(MPI_COMM_WORLD, 1); 
-            }
-            base_buffer[0] *= 3.4;
-            free(base_buffer);
+            buffer[0] *= 3.4;
             
-            if (halo > 0) {
-                for (int d = 0; d < ndims; d++) {
-                    start[d] = 0;
-                    count[d] = dimlen[d];
-                }
-                // Left halo (periodic in x direction)
-                start[lat_idx] = base_lat0;
-                start[lon_idx] = (base_lon0 - halo + lon_size) % lon_size;
-                count[lat_idx] = sub_lat;
+            if (halo > 0 && has_periodic_halo) {
+                start[lon_idx] = periodic_halo_lon_start;
                 count[lon_idx] = halo;
-                size_t left_size = 1;
-                for (int d = 0; d < ndims; d++) {
-                    left_size *= count[d];
+                retval = nc_get_vara_float(ncid, varid, start, count, buffer);
+                if (retval != NC_NOERR) {
+                    printf("Rank %d: Error reading periodic halo for var %d: %s\n", rank, varid, nc_strerror(retval));
+                    safe_abort(MPI_COMM_WORLD, 1);
                 }
-                float *left_buffer = (float*) malloc(left_size * sizeof(float));
-                retval = nc_get_vara_float(ncid, varid, start, count, left_buffer);
-                if (retval != NC_NOERR) { 
-                    printf("Rank %d: Error reading left halo for var %d: %s\n", rank, varid, nc_strerror(retval)); 
-                    safe_abort(MPI_COMM_WORLD, 1); 
-                }
-                left_buffer[0] *= 3.4;
-                free(left_buffer);
-                
-                // Right halo (periodic in x direction)  
-                start[lon_idx] = (base_lon1 + 1) % lon_size;
-                float *right_buffer = (float*) malloc(left_size * sizeof(float));
-                retval = nc_get_vara_float(ncid, varid, start, count, right_buffer);           
-                if (retval != NC_NOERR) { 
-                    printf("Rank %d: Error reading right halo for var %d: %s\n", rank, varid, nc_strerror(retval)); 
-                    safe_abort(MPI_COMM_WORLD, 1); 
-                }
-                right_buffer[0] *= 3.4;
-                free(right_buffer);
-                
-                // Top halo (periodic in y direction)
-                start[lat_idx] = (base_lat0 - halo + lat_size) % lat_size;
-                start[lon_idx] = base_lon0;
-                count[lat_idx] = halo;
-                count[lon_idx] = sub_lon;
-                size_t top_size = 1;
-                for (int d = 0; d < ndims; d++) {
-                    top_size *= count[d];
-                }
-                float *top_buffer = (float*) malloc(top_size * sizeof(float));
-                retval = nc_get_vara_float(ncid, varid, start, count, top_buffer);
-                if (retval != NC_NOERR) { 
-                    printf("Rank %d: Error reading top halo for var %d: %s\n", rank, varid, nc_strerror(retval)); 
-                    safe_abort(MPI_COMM_WORLD, 1); 
-                }
-                top_buffer[0] *= 3.4;
-                free(top_buffer);
-                
-                // Bottom halo (periodic in y direction)
-                start[lat_idx] = (base_lat1 + 1) % lat_size;
-                float *bottom_buffer = (float*) malloc(top_size * sizeof(float));
-                retval = nc_get_vara_float(ncid, varid, start, count, bottom_buffer);
-                if (retval != NC_NOERR) { 
-                    printf("Rank %d: Error reading bottom halo for var %d: %s\n", rank, varid, nc_strerror(retval)); 
-                    safe_abort(MPI_COMM_WORLD, 1); 
-                }
-                bottom_buffer[0] *= 3.4;
-                free(bottom_buffer);
+                buffer[0] *= 3.4;
             }
         }
 

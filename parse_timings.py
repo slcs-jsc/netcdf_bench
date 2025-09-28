@@ -57,6 +57,11 @@ def parse_log_file(filepath):
     filesize_match = re.search(r'filesize=(\d+) bytes', content)
     if filesize_match:
         data['filesize'] = int(filesize_match.group(1))
+    else:
+        filesize_match = re.search(r'filesize=[+-]?([0-9]*[.])?[0-9]+ MB', content)
+        if filesize_match:
+            line = content[filesize_match.start():filesize_match.end()]
+            data['filesize'] = float(line.split('=')[1].split()[0]) * 1024 * 1024
     
     # Extract timing data for each rank
     timing_pattern = r'rank=(\d+) ; times=([\d\.,]+)'
@@ -221,7 +226,7 @@ def main():
     """Main function to process log files and calculate statistics."""
     
     # Define logs directory
-    logs_dir = Path(__file__).parent / "logs"
+    logs_dir = Path(__file__).parent / "logs_default"
     
     # Find all .out files in logs directory
     log_files = list(logs_dir.glob("*.out"))
