@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
     int base_lat1 = py * sub_lat + sub_lat - 1;
 
     // check for periodic boundaries
-    bool has_periodic_halo = (halo > 0) && ( (px == 0) || (px == nproc_x - 1) );
+    int has_periodic_halo = (halo > 0) && ( (px == 0) || (px == nproc_x - 1) );
     int periodic_halo_lon_start = 0;
     if (px == 0) {
         base_lon0 += halo;
@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
     if (rank == 0) {
         printf("Processing %d files with %d ranks (%dx%d decomposition, halo=%d)\n", nfiles, nprocs, nproc_x, nproc_y, halo);
     }
-    printf("Rank %d: subdomain lat[%d:%d], lon[%d:%d]%s\n", rank, base_lat0, base_lat1, base_lon0, base_lon1, lon_boundary==0?"":(lon_boundary==-1?" (periodic left halo)":" (periodic right halo)"));
+    printf("Rank %d: subdomain lat[%d:%d], lon[%d:%d]%s\n", rank, base_lat0, base_lat1, base_lon0, base_lon1, has_periodic_halo ? " with periodic halo" : "");
 
     // Calculate the size of the file in bytes for timing output
     size_t file_bytes = sizeof(float) * nvars;
@@ -186,6 +186,7 @@ int main(int argc, char **argv) {
     }
 
     for (int f = 0; f < nfiles; f++) {
+        // Open each netCDF file in parallel mode
         retval = nc_open_par(file_list[f], NC_NOWRITE, MPI_COMM_WORLD, MPI_INFO_NULL, &ncid);
         if (retval != NC_NOERR) { 
             printf("Rank %d: Error opening file %s: %s\n", rank, file_list[f], nc_strerror(retval)); 
@@ -206,6 +207,7 @@ int main(int argc, char **argv) {
         double file_start = get_time_sec();
         for (int varid = 0; varid < nvars+dimvars; varid++) {
             if (is_dimvar[varid]) continue;
+            // Read the subdomain for this variable
             start[lat_idx] = base_lat0;
             start[lon_idx] = base_lon0;
             count[lat_idx] = base_lat1-base_lat0+1;
@@ -216,7 +218,7 @@ int main(int argc, char **argv) {
                 safe_abort(MPI_COMM_WORLD, 1);
             }
             buffer[0] *= 3.4;
-            
+            // Read periodic halo if applicable
             if (halo > 0 && has_periodic_halo) {
                 start[lon_idx] = periodic_halo_lon_start;
                 count[lon_idx] = halo;
@@ -228,7 +230,6 @@ int main(int argc, char **argv) {
                 buffer[0] *= 3.4;
             }
         }
-
         nc_close(ncid);
         MPI_Barrier(MPI_COMM_WORLD);
         double file_end = get_time_sec();
