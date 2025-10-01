@@ -1,17 +1,17 @@
 #!/bin/bash
 
 # Script to generate and submit multiple NetCDF benchmark jobs with different configurations
-# Configurations: 3x3/1x1 grid, h=2/h=0 halo, ind=yes/no access
-# Total: 8 different configurations
+# Configurations: 1x1/2x2/3x3/4x4 grid, h=2/h=0 halo, independent access only
+# Total: 8 different configurations (4 grids × 2 halo sizes)
 
 set -e
 
 # Configuration arrays
-grids=("3 3" "1 1")
-grid_names=("3x3" "1x1")
+grids=("1 1" "2 2" "3 3" "4 4") # "10 10")
+grid_names=("1x1" "2x2" "3x3" "4x4") # "10x10")
 halos=(2 0)
-independent=(1 0)
-independent_names=("ind" "col")
+independent=(1)
+independent_names=("ind")
 
 # Number of hours to spread jobs across (default: 8, can be overridden as first argument)
 N_HOURS=${1:-8}
@@ -21,8 +21,11 @@ echo "Total jobs to submit: $((8 * N_HOURS))"
 echo ""
 
 # Base directories for files (different for each grid configuration)
-file_dir_3x3="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_3x3domains_unevenly_2400x1200x120grid_90dt/"
-file_dir_1x1="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_1x1domains_unevenly_2400x1200x120grid_90dt/"
+file_dir_1x1="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_1x1domains_unevenly_1200x600x120grid_180dt/"
+file_dir_2x2="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_2x2domains_unevenly_1200x600x120grid_180dt/"
+file_dir_3x3="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_3x3domains_unevenly_1200x600x120grid_180dt/"
+file_dir_4x4="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_4x4domains_unevenly_1200x600x120grid_180dt/"
+file_dir_10x10="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_10x10domains_unevenly_1200x600x120grid_180dt/"
 
 # Create logs and scripts directories if they don't exist
 mkdir -p logs
@@ -33,7 +36,7 @@ job_counter=0
 echo "=== Creating 8 unique job scripts ==="
 
 # First, create the 8 unique job scripts (one for each configuration)
-for grid_idx in 0 1; do
+for grid_idx in 0 1 2 3; do
     grid="${grids[$grid_idx]}"
     grid_name="${grid_names[$grid_idx]}"
     
@@ -43,14 +46,16 @@ for grid_idx in 0 1; do
     num_tasks=$((grid_x * grid_y))
     
     # Select appropriate file directory
-    if [ "$grid_name" = "3x3" ]; then
-        file_dir="$file_dir_3x3"
-    else
-        file_dir="$file_dir_1x1"
-    fi
+    case "$grid_name" in
+        "1x1") file_dir="$file_dir_1x1" ;;
+        "2x2") file_dir="$file_dir_2x2" ;;
+        "3x3") file_dir="$file_dir_3x3" ;;
+        "4x4") file_dir="$file_dir_4x4" ;;
+        "10x10") file_dir="$file_dir_10x10" ;;
+    esac
     
     for halo in "${halos[@]}"; do
-        for ind_idx in 0 1; do
+        for ind_idx in 0; do
             ind="${independent[$ind_idx]}"
             ind_name="${independent_names[$ind_idx]}"
             
@@ -81,7 +86,7 @@ set -e
 echo "=== NetCDF Benchmark Configuration ==="
 echo "Process grid: $grid_name ($num_tasks tasks)"
 echo "Halo size: $halo"
-echo "Independent access: $([ $ind -eq 1 ] && echo "yes" || echo "no")"
+echo "Independent access: yes"
 echo "Job started at: \$(date)"
 echo ""
 
@@ -150,9 +155,9 @@ done
 echo "All jobs submitted successfully!"
 echo ""
 echo "Configuration summary:"
-echo "- Process grids: 3x3, 1x1"
+echo "- Process grids: 1x1, 2x2, 3x3, 4x4, 10x10"
 echo "- Halo sizes: 2, 0"
-echo "- Access types: independent, collective"
+echo "- Access types: independent only"
 echo "- Time slots: $N_HOURS hours"
 echo "- Total jobs: $((8 * N_HOURS))"
 echo ""

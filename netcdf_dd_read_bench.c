@@ -57,6 +57,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // For 1x1 domains, force halo to be 0 to avoid problems
+    if (nproc_x == 1 && nproc_y == 1 && halo > 0) {
+        if (rank == 0)
+            printf("Warning: 1x1 domain decomposition detected, forcing halo=0\n");
+        halo = 0;
+    }
+
     // Print configuration details from rank 0
     if (rank == 0) {
         printf("Halo size: %d\n", halo);

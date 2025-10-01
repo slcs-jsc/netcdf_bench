@@ -166,7 +166,7 @@ def print_statistics(stats):
     
     print()
 
-def plot_statistics(stats):
+def plot_statistics(stats,path):
     """Plot statistics using matplotlib."""
     import matplotlib.pyplot as plt
     import datetime
@@ -197,71 +197,102 @@ def plot_statistics(stats):
         config_stats[config].sort(key=lambda x: x[0] if x[0] else datetime.datetime.min)
     
     # plot io speed and uncertainty over time for each config (use an area plot for uncertainty)
-    fig, axs = plt.subplots(2, 1, figsize=(12, 12), sharey=True)
+    #fig, axs = plt.subplots(2, 1, figsize=(12, 12), sharey=True)
+    fig, axs = plt.subplots(1, 1, figsize=(12, 6))
     for config, values in config_stats.items():
+        # skip collective configs
+        if "col" in config:
+            continue
+        #ax = axs[0] if "ind" in config else axs[1]
+        ax = axs
+
         times = [v[0] for v in values if v[0] is not None]
+        timers = [v[1] for v in values if v[0] is not None]
         speeds = [v[3] for v in values if v[0] is not None]
         uncertainties = [v[4] for v in values if v[0] is not None]
         mean_speed = np.mean(speeds)
         std_speed = np.std(speeds)
-        print(f"{config}: I/O Speed = ({mean_speed:.2f} ± {std_speed:.2f}) MB/s")
+        print(f"{config}: I/O Speed = ({mean_speed:.2f} ± {std_speed:.2f}) MB/s, Timers = ({np.mean(timers)} ± {np.std(timers)}) s")
         color = "red" if "3x3" in config else "blue"
         linestyle = "-" if "h=2" in config else "--"
-        ax = axs[0] if "ind" in config else axs[1]
-
         if times and speeds:
             ax.plot(times, np.array(speeds), label=config, linestyle=linestyle, marker='x', color=color)
             ax.fill_between(times, np.array(speeds) - np.array(uncertainties), np.array(speeds) + np.array(uncertainties), color=color, alpha=0.2)
-    axs[0].set_ylabel('I/O Speed (MB/s)')
-    axs[1].set_ylabel('I/O Speed (MB/s)')
-    axs[0].set_title('Independent Access')
-    axs[1].set_title('Collective Access')
-    axs[0].legend()
-    axs[1].legend()
+    #axs[0].set_ylabel('I/O Speed (MB/s)')
+    #axs[1].set_ylabel('I/O Speed (MB/s)')
+    #axs[0].set_title('Independent Access')
+    #axs[1].set_title('Collective Access')
+    #axs[0].legend()
+    #axs[1].legend()
+    axs.set_ylabel('I/O Speed (MB/s)')
+    axs.set_xlabel('Time')
+    axs.set_title('NetCDF Benchmark I/O Speed Over Time')
+    axs.legend()
+    
     fig.tight_layout()
-    fig.savefig("io_speed_over_time.svg")
+    fig.savefig(path)
+    return config_stats
 
 
 def main():
     """Main function to process log files and calculate statistics."""
     
-    # Define logs directory
-    logs_dir = Path(__file__).parent / "logs_default"
-    
-    # Find all .out files in logs directory
-    log_files = list(logs_dir.glob("*.out"))
-    
-    if not log_files:
-        print(f"No log files found in {logs_dir}")
-        return
-    
-    print(f"Found {len(log_files)} log file(s) to process:")
-    for log_file in log_files:
-        print(f"  - {log_file.name}")
-    print()
-    
-    # Parse all log files
-    parsed_data = []
-    for log_file in log_files:
-        try:
-            data = parse_log_file(log_file)
-            parsed_data.append(data)
-            print(f"Successfully parsed: {log_file.name}")
-        except Exception as e:
-            print(f"Error parsing {log_file.name}: {e}")
-    
-    if not parsed_data:
-        print("No data could be parsed from log files.")
-        return
-    
-    print()
-    
-    # Calculate statistics
-    stats = calculate_statistics(parsed_data)
-    
-    print_statistics(stats)
+    logs_stats = {}
 
-    plot_statistics(stats)
+    for log_prefix in ["default", "large", "new_large"]:
+        logs_dir = Path(__file__).parent / f"logs_{log_prefix}"
+        log_files = list(logs_dir.glob("*.out"))
+        
+        if not log_files:
+            print(f"No log files found in {logs_dir}")
+            return
+        
+        print(f"Found {len(log_files)} log file(s) to process:")
+        for log_file in log_files:
+            print(f"  - {log_file.name}")
+        print()
+
+        # Parse all log files
+        parsed_data = []
+        for log_file in log_files:
+            try:
+                data = parse_log_file(log_file)
+                parsed_data.append(data)
+                print(f"Successfully parsed: {log_file.name}")
+            except Exception as e:
+                print(f"Error parsing {log_file.name}: {e}")
+        
+        if not parsed_data:
+            print("No data could be parsed from log files.")
+            return
+        
+        print()
+        
+        # Calculate statistics
+        stats = calculate_statistics(parsed_data)
+        
+        print_statistics(stats)
+
+        logs_stats[log_prefix] = {}
+        logs_stats[log_prefix]['stats'] = plot_statistics(stats, f"io_bench_{log_prefix}.pdf")
+        logs_stats[log_prefix]['file_num'] = stats['file_stats'][0]['num_files']
+        logs_stats[log_prefix]['file_size'] = stats['file_stats'][0]['filesize_mb']
+        for file_stat in stats['file_stats']:
+            if file_stat['num_files'] != logs_stats[log_prefix]['file_num']:
+                print(f"Warning: Inconsistent number of files in {log_prefix} logs.")
+            if file_stat['filesize_mb'] != logs_stats[log_prefix]['file_size']:
+                print(f"Warning: Inconsistent file sizes in {log_prefix} logs.")
+    
+    for key in logs_stats:
+        print(f"\nConfiguration: {key}, Files: {logs_stats[key]['file_num']}, File Size: {logs_stats[key]['file_size']:.2f} MB")
+        for config, values in logs_stats[key]['stats'].items():
+            if "ind" in config:
+                timers = [v[1] for v in values if v[0] is not None]
+                total_time = np.mean(timers)*logs_stats[key]['file_num']
+                total_time_std = np.std(timers)*logs_stats[key]['file_num']
+                print(f"  {config}: Total Time = ({total_time:.2f} ± {total_time_std:.2f})s")
+
+
 
 
 if __name__ == "__main__":
