@@ -148,20 +148,37 @@ int main(int argc, char **argv) {
     int lon_size = dimlen[lon_idx], lat_size = dimlen[lat_idx];
     int sub_lon = lon_size / nproc_x;
     int sub_lat = lat_size / nproc_y;
-    int base_lon0 = px * sub_lon - halo;
+    
+    // Calculate base subdomain without halo first
+    int base_lon0 = px * sub_lon;
     int base_lat0 = py * sub_lat;
-    int base_lon1 = px * sub_lon + sub_lon - 1 + halo;
+    int base_lon1 = px * sub_lon + sub_lon - 1;
     int base_lat1 = py * sub_lat + sub_lat - 1;
-
-    // check for periodic boundaries
+    
+    // Add halo, handling periodic boundaries
     int has_periodic_halo = (halo > 0) && ( (px == 0) || (px == nproc_x - 1) );
     int periodic_halo_lon_start = 0;
-    if (px == 0) {
-        base_lon0 += halo;
-        periodic_halo_lon_start = lon_size - halo - 1;
-    }else if (px == nproc_x - 1) {
-        base_lon1 -= halo;
-        periodic_halo_lon_start = 0;
+    
+    if (halo > 0) {
+        if (px == 0) {
+            // Left boundary: don't extend left, handle periodically
+            periodic_halo_lon_start = lon_size - halo - 1;
+        } else {
+            // Not left boundary: extend left
+            base_lon0 = (base_lon0 - halo < 0) ? 0 : base_lon0 - halo;
+        }
+        
+        if (px == nproc_x - 1) {
+            // Right boundary: don't extend right, handle periodically  
+            periodic_halo_lon_start = 0;
+        } else {
+            // Not right boundary: extend right
+            base_lon1 = (base_lon1 + halo >= lon_size) ? lon_size - 1 : base_lon1 + halo;
+        }
+        
+        // Add latitude halo (assuming no periodicity)
+        base_lat0 = (base_lat0 - halo < 0) ? 0 : base_lat0 - halo;
+        base_lat1 = (base_lat1 + halo >= lat_size) ? lat_size - 1 : base_lat1 + halo;
     }
 
     // Allocate buffer for reading data including halos
