@@ -213,7 +213,13 @@ def plot_statistics(stats,path):
         mean_speed = np.mean(speeds)
         std_speed = np.std(speeds)
         print(f"{config}: I/O Speed = ({mean_speed:.2f} ± {std_speed:.2f}) MB/s, Timers = ({np.mean(timers)} ± {np.std(timers)}) s")
-        color = "red" if "3x3" in config else "blue"
+        color = "black"
+        if "2x2" in config:
+            color = "red"
+        elif "3x3" in config:
+            color = "green"
+        elif "4x4" in config:
+            color = "blue"
         linestyle = "-" if "h=2" in config else "--"
         if times and speeds:
             ax.plot(times, np.array(speeds), label=config, linestyle=linestyle, marker='x', color=color)
@@ -239,7 +245,7 @@ def main():
     
     logs_stats = {}
 
-    for log_prefix in ["default", "large", "new_large"]:
+    for log_prefix in ["default", "large", "new_large", "strong_scaling"]:
         logs_dir = Path(__file__).parent / f"logs_{log_prefix}"
         log_files = list(logs_dir.glob("*.out"))
         
@@ -288,8 +294,20 @@ def main():
         for config, values in logs_stats[key]['stats'].items():
             if "ind" in config:
                 timers = [v[1] for v in values if v[0] is not None]
-                total_time = np.mean(timers)*logs_stats[key]['file_num']
-                total_time_std = np.std(timers)*logs_stats[key]['file_num']
+                timer_stds = [v[2] for v in values if v[0] is not None]
+                n = logs_stats[key]['file_num']  # number of files per benchmark run
+                
+                # Calculate overall mean
+                overall_mean = np.mean(timers)
+                
+                # Calculate overall standard deviation using the formula that combines
+                # within-group variance and variance of group means
+                overall_var = sum(n * (std**2 + (mean - overall_mean)**2) 
+                                  for mean, std in zip(timers, timer_stds)) / (n * len(timers))
+                overall_std = np.sqrt(overall_var)
+                
+                total_time = overall_mean * n
+                total_time_std = overall_std * n
                 print(f"  {config}: Total Time = ({total_time:.2f} ± {total_time_std:.2f})s")
 
 
