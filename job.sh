@@ -22,6 +22,6 @@ echo "Found $(echo $wind_files | wc -w) NetCDF files"
 echo "First files: $(echo $wind_files | head -c200)"
 echo "Last files: $(echo $wind_files | tail -c200)"
 
-srun ./netcdf_dd_read_bench 0 3 3 1 lon lat $wind_files
+srun ./netcdf_dd_read_bench 2 3 3 1 lon lat $wind_files
 
 echo "Benchmark completed at: $(date)"

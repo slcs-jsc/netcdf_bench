@@ -222,7 +222,7 @@ def plot_statistics(stats,path):
             color = "blue"
         linestyle = "-" if "h=2" in config else "--"
         if times and speeds:
-            ax.plot(times, np.array(speeds), label=config, linestyle=linestyle, marker='x', color=color)
+            ax.plot(times, np.array(speeds), label=f"{config}, {speeds[0]*timers[0]/1e3:.1f} GB", linestyle=linestyle, marker='x', color=color)
             ax.fill_between(times, np.array(speeds) - np.array(uncertainties), np.array(speeds) + np.array(uncertainties), color=color, alpha=0.2)
     #axs[0].set_ylabel('I/O Speed (MB/s)')
     #axs[1].set_ylabel('I/O Speed (MB/s)')
@@ -245,7 +245,7 @@ def main():
     
     logs_stats = {}
 
-    for log_prefix in ["default", "large", "new_large", "strong_scaling"]:
+    for log_prefix in ["default", "large", "new_large", "strong_scaling", "weak_scaling_old"]:
         logs_dir = Path(__file__).parent / f"logs_{log_prefix}"
         log_files = list(logs_dir.glob("*.out"))
         
@@ -281,16 +281,11 @@ def main():
 
         logs_stats[log_prefix] = {}
         logs_stats[log_prefix]['stats'] = plot_statistics(stats, f"io_bench_{log_prefix}.pdf")
-        logs_stats[log_prefix]['file_num'] = stats['file_stats'][0]['num_files']
-        logs_stats[log_prefix]['file_size'] = stats['file_stats'][0]['filesize_mb']
-        for file_stat in stats['file_stats']:
-            if file_stat['num_files'] != logs_stats[log_prefix]['file_num']:
-                print(f"Warning: Inconsistent number of files in {log_prefix} logs.")
-            if file_stat['filesize_mb'] != logs_stats[log_prefix]['file_size']:
-                print(f"Warning: Inconsistent file sizes in {log_prefix} logs.")
+        logs_stats[log_prefix]['file_num'] = [stats['file_stats'][i]['num_files'] for i in range(len(stats['file_stats']))][0]
+        logs_stats[log_prefix]['file_size'] = [stats['file_stats'][i]['filesize_mb'] for i in range(len(stats['file_stats']))]
     
     for key in logs_stats:
-        print(f"\nConfiguration: {key}, Files: {logs_stats[key]['file_num']}, File Size: {logs_stats[key]['file_size']:.2f} MB")
+        print(f"\nConfiguration: {key}, Files: {logs_stats[key]['file_num']}, File Size: {np.min(logs_stats[key]['file_size']):.0f}-{np.max(logs_stats[key]['file_size']):.0f} MB")
         for config, values in logs_stats[key]['stats'].items():
             if "ind" in config:
                 timers = [v[1] for v in values if v[0] is not None]
@@ -308,7 +303,7 @@ def main():
                 
                 total_time = overall_mean * n
                 total_time_std = overall_std * n
-                print(f"  {config}: Total Time = ({total_time:.2f} ± {total_time_std:.2f})s")
+                print(f"  {config}: Total number of files = {n*len(timers)} ; Total Time = ({total_time:.2f} ± {total_time_std:.2f})s")
 
 
 

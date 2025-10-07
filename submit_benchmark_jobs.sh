@@ -2,13 +2,13 @@
 
 # Script to generate and submit multiple NetCDF benchmark jobs with different configurations
 # Configurations: 1x1/2x2/3x3/4x4 grid, h=2/h=0 halo, independent access only
-# Total: 8 different configurations (4 grids × 2 halo sizes)
+# Total: 10 different configurations (5 grids × 2 halo sizes)
 
 set -e
 
 # Configuration arrays
-grids=("1 1" "2 2" "3 3" "4 4") # "10 10")
-grid_names=("1x1" "2x2" "3x3" "4x4") # "10x10")
+grids=("1 1" "2 2" "3 3" "4 4" "10 10")
+grid_names=("1x1" "2x2" "3x3" "4x4" "10x10")
 halos=(2 0)
 independent=(1)
 independent_names=("ind")
@@ -17,15 +17,15 @@ independent_names=("ind")
 N_HOURS=${1:-8}
 
 echo "Submitting NetCDF benchmark jobs with staggered scheduling over $N_HOURS hours"
-echo "Total jobs to submit: $((8 * N_HOURS))"
+echo "Total jobs to submit: $((10 * N_HOURS))"
 echo ""
 
 # Base directories for files (different for each grid configuration)
-file_dir_1x1="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_1x1domains_unevenly_1200x600x120grid_180dt/"
-file_dir_2x2="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_2x2domains_unevenly_1200x600x120grid_180dt/"
-file_dir_3x3="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_3x3domains_unevenly_1200x600x120grid_180dt/"
-file_dir_4x4="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_4x4domains_unevenly_1200x600x120grid_180dt/"
-file_dir_10x10="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e7particles_1gpus_12cpus_10x10domains_unevenly_1200x600x120grid_180dt/"
+file_dir_1x1="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e6particles_1gpus_12cpus_1x1domains_unevenly_1100x550x137grid_180dt/"
+file_dir_2x2="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_4e6particles_1gpus_12cpus_2x2domains_unevenly_2200x1100x137grid_90dt/"
+file_dir_3x3="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_9e6particles_1gpus_12cpus_3x3domains_unevenly_3300x1650x137grid_60dt/"
+file_dir_4x4="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_16e6particles_1gpus_12cpus_4x4domains_unevenly_4400x2200x137grid_45dt/"
+file_dir_10x10="/p/scratch/cslmet/henke1/benchmark/met_input/wind_data_1e8particles_1gpus_12cpus_10x10domains_unevenly_11000x5500x137grid_18dt/"
 
 # Create logs and scripts directories if they don't exist
 mkdir -p logs
@@ -33,10 +33,10 @@ mkdir -p scripts
 
 job_counter=0
 
-echo "=== Creating 8 unique job scripts ==="
+echo "=== Creating 10 unique job scripts ==="
 
-# First, create the 8 unique job scripts (one for each configuration)
-for grid_idx in 0 1 2 3; do
+# First, create the 10 unique job scripts (one for each configuration)
+for grid_idx in 0 1 2 3 4; do
     grid="${grids[$grid_idx]}"
     grid_name="${grid_names[$grid_idx]}"
     
@@ -65,7 +65,7 @@ for grid_idx in 0 1 2 3; do
             job_name="netcdf_${grid_name}_h${halo}_${ind_name}"
             job_file="scripts/job_${job_name}.sh"
             
-            echo "Creating job script $job_counter/8: $job_name"
+            echo "Creating job script $job_counter/10: $job_name"
                 
             # Generate the job script
             cat > "$job_file" << EOF
@@ -135,7 +135,7 @@ for hour in $(seq 0 $((N_HOURS - 1))); do
         submission_counter=$((submission_counter + 1))
         job_name=$(basename "$job_file" .sh | sed 's/job_//')
         
-        echo "Submitting job $submission_counter/$((8 * N_HOURS)): $job_name (scheduled for $delay_str)"
+        echo "Submitting job $submission_counter/$((10 * N_HOURS)): $job_name (scheduled for $delay_str)"
         
         # Submit the job
         if [ -n "$delay_option" ]; then
@@ -159,7 +159,7 @@ echo "- Process grids: 1x1, 2x2, 3x3, 4x4, 10x10"
 echo "- Halo sizes: 2, 0"
 echo "- Access types: independent only"
 echo "- Time slots: $N_HOURS hours"
-echo "- Total jobs: $((8 * N_HOURS))"
+echo "- Total jobs: $((10 * N_HOURS))"
 echo ""
 echo "Monitor job status with: squeue -u \$USER"
 echo "Check logs in: ./logs/"
